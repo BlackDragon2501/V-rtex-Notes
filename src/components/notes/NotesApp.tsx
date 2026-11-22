@@ -128,7 +128,48 @@ export default function NotesApp() {
   const searchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    setNotes(loadNotes())
+    const loaded = loadNotes()
+
+    // Importacion directa desde Vortex Voice / Vortex Lens via hash #import=...
+    // El payload (JSON en base64url) viaja solo en el fragmento de la URL:
+    // nunca se envia a un servidor, lo lee la propia pagina al abrir.
+    try {
+      const h = window.location.hash
+      if (h.startsWith('#import=')) {
+        const b64 = h.slice(8).replace(/-/g, '+').replace(/_/g, '/')
+        const bin = atob(b64 + '==='.slice((b64.length + 3) % 4))
+        const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0))
+        const data = JSON.parse(new TextDecoder().decode(bytes)) as { t?: string; x?: string; s?: string }
+        if (data.x && data.x.trim()) {
+          const now = Date.now()
+          const isOcr = data.s === 'ocr'
+          const note: Note = {
+            id: newId(),
+            title: (data.t || 'Texto importado').slice(0, 120),
+            content: data.x,
+            tags: [isOcr ? 'ocr' : 'voz'],
+            pinned: false,
+            createdAt: now,
+            updatedAt: now,
+          }
+          loaded.unshift(note)
+          saveNotes(loaded)
+          setNotes(loaded)
+          setSelectedId(note.id)
+          setPreview(false)
+          setModule('notas')
+          setMounted(true)
+          window.history.replaceState(null, '', window.location.pathname + window.location.search)
+          setFlash(isOcr ? 'Texto importado desde Vórtex Lens' : 'Texto importado desde Vórtex Voice')
+          window.setTimeout(() => setFlash(''), 3200)
+          return
+        }
+      }
+    } catch {
+      // hash invalido o corrupto: se ignora y se arranca normal
+    }
+
+    setNotes(loaded)
     setJournal(loadJournal())
     setLinks(loadLinks())
     setMounted(true)
